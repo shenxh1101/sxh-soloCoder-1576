@@ -1,10 +1,10 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Trash2, User, Phone, IdCard, Tag, Check, AlertCircle } from 'lucide-react';
 import { useOrderStore } from '@/store';
 import type { WashType, ClothingType, OrderItem } from '@/types';
 import { CLOTHING_TYPE_NAMES, WASH_TYPE_NAMES } from '@/config/prices';
-import { generateId, calculateTotalAmount, calculateFinalAmount, formatCurrency } from '@/utils';
+import { generateId, calculateTotalAmount, calculateFinalAmount, formatCurrency, formatDiscount } from '@/utils';
 
 const clothingOptions: ClothingType[] = ['shirt', 'pants', 'coat', 'bedding'];
 
@@ -31,38 +31,41 @@ export default function NewOrder() {
     setMemberError('');
   }, []);
 
+  const searchMember = useCallback(
+    (input: string) => {
+      const trimmed = input.trim();
+      if (!trimmed) {
+        resetMemberState();
+        return;
+      }
+
+      let member = getMemberById(trimmed);
+      if (!member && /^\d{11}$/.test(trimmed)) {
+        member = getMemberByPhone(trimmed);
+      }
+
+      if (member) {
+        setMemberDiscount(member.discount);
+        setMemberName(member.name);
+        setMemberId(member.id);
+        setMemberError('');
+        if (!customerName) setCustomerName(member.name);
+        if (!customerPhone) setCustomerPhone(member.phone);
+      } else {
+        resetMemberState();
+        setMemberError('未找到该会员，请检查会员号或手机号');
+      }
+    },
+    [getMemberById, getMemberByPhone, customerName, customerPhone, resetMemberState]
+  );
+
+  useEffect(() => {
+    searchMember(memberIdInput);
+  }, [memberIdInput, searchMember]);
+
   const handleMemberInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setMemberIdInput(value);
-    if (!value.trim()) {
-      resetMemberState();
-    }
+    setMemberIdInput(e.target.value);
   };
-
-  const handleMemberSearch = useCallback(() => {
-    const input = memberIdInput.trim();
-    if (!input) {
-      resetMemberState();
-      return;
-    }
-
-    let member = getMemberById(input);
-    if (!member && /^\d{11}$/.test(input)) {
-      member = getMemberByPhone(input);
-    }
-
-    if (member) {
-      setMemberDiscount(member.discount);
-      setMemberName(member.name);
-      setMemberId(member.id);
-      setMemberError('');
-      if (!customerName) setCustomerName(member.name);
-      if (!customerPhone) setCustomerPhone(member.phone);
-    } else {
-      resetMemberState();
-      setMemberError('未找到该会员，请检查会员号或手机号');
-    }
-  }, [memberIdInput, getMemberById, getMemberByPhone, customerName, customerPhone, resetMemberState]);
 
   const getCurrentUnitPrice = useCallback(
     (washType: WashType, clothingType: ClothingType) => {
@@ -196,37 +199,28 @@ export default function NewOrder() {
                   <IdCard className="w-4 h-4 text-slate-400" />
                   会员号 / 手机号（选填）
                 </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={memberIdInput}
-                    onChange={handleMemberInputChange}
-                    onBlur={handleMemberSearch}
-                    placeholder="输入会员号或手机号查询会员折扣"
-                    className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all"
-                  />
-                  <button
-                    onClick={handleMemberSearch}
-                    className="px-5 py-2.5 bg-slate-100 text-slate-700 font-medium rounded-xl hover:bg-slate-200 transition-colors"
-                  >
-                    查询
-                  </button>
-                </div>
+                <input
+                  type="text"
+                  value={memberIdInput}
+                  onChange={handleMemberInputChange}
+                  placeholder="输入会员号或手机号，实时查询会员折扣"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all"
+                />
                 {memberDiscount < 1 && memberName && (
                   <div className="mt-3 flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
                     <Check className="w-5 h-5 text-emerald-600" />
                     <span className="text-sm text-emerald-700">
-                      会员「{memberName}」（{memberId}），享 <strong>{Math.round(memberDiscount * 10)}折</strong> 优惠
+                      会员「{memberName}」（{memberId}），享 <strong>{formatDiscount(memberDiscount)}</strong> 优惠
                     </span>
                   </div>
                 )}
-                {memberError && (
+                {memberError && memberIdInput.trim() && (
                   <div className="mt-3 flex items-center gap-2 p-3 bg-rose-50 border border-rose-200 rounded-xl">
                     <AlertCircle className="w-5 h-5 text-rose-600" />
                     <span className="text-sm text-rose-700">{memberError}</span>
                   </div>
                 )}
-                {!memberIdInput.trim() && memberDiscount === 1 && (
+                {!memberIdInput.trim() && (
                   <p className="mt-2 text-xs text-slate-500">
                     未输入会员信息，按原价计算
                   </p>
@@ -383,7 +377,7 @@ export default function NewOrder() {
                 <div className="flex items-center justify-between text-emerald-600">
                   <span className="flex items-center gap-1">
                     <Tag className="w-4 h-4" />
-                    会员{Math.round(memberDiscount * 10)}折
+                    {formatDiscount(memberDiscount)}
                   </span>
                   <span className="font-medium">-{formatCurrency(discountAmount)}</span>
                 </div>

@@ -4,7 +4,7 @@ import { Search, Plus, Filter, Eye } from 'lucide-react';
 import { useOrderStore } from '@/store';
 import type { OrderStatus } from '@/types';
 import { ORDER_STATUS_NAMES } from '@/config/prices';
-import { formatDate, formatCurrency, isOverdue, getOverdueDays } from '@/utils';
+import { formatDate, formatCurrency, isOverdue, getOverdueDays, formatDiscount } from '@/utils';
 import OrderStatusBadge from '@/components/OrderStatusBadge';
 
 export default function Orders() {
@@ -125,7 +125,7 @@ export default function Orders() {
                         <span className="font-semibold text-slate-800">{formatCurrency(order.finalAmount)}</span>
                         {order.memberDiscount < 1 && (
                           <span className="ml-2 text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-                            会员{Math.round(order.memberDiscount * 10)}折
+                            {formatDiscount(order.memberDiscount)}
                           </span>
                         )}
                       </td>

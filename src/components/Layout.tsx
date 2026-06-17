@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ShoppingBag, BarChart3, Shirt, Plus, Tag, Users } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, BarChart3, Shirt, Plus, Tag, Users, Clock } from 'lucide-react';
 
 export default function Layout() {
   const navigate = useNavigate();
@@ -8,9 +8,10 @@ export default function Layout() {
   const navItems = [
     { to: '/', label: '仪表盘', icon: LayoutDashboard },
     { to: '/orders', label: '订单管理', icon: ShoppingBag },
-    { to: '/statistics', label: '统计报表', icon: BarChart3 },
-    { to: '/prices', label: '价格设置', icon: Tag },
+    { to: '/pickup', label: '待取列表', icon: Clock },
     { to: '/members', label: '会员管理', icon: Users },
+    { to: '/prices', label: '价格设置', icon: Tag },
+    { to: '/statistics', label: '统计报表', icon: BarChart3 },
   ];
 
   return (

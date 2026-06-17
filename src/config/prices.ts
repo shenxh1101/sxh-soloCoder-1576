@@ -41,7 +41,7 @@ export const PAYMENT_METHOD_NAMES: Record<PaymentMethod, string> = {
 };
 
 export const DEFAULT_MEMBERS = [
-  { id: 'M001', name: '张三', phone: '13800138001', discount: 0.9, createdAt: new Date(Date.now() - 86400000 * 90).toISOString() },
-  { id: 'M002', name: '李四', phone: '13800138002', discount: 0.85, createdAt: new Date(Date.now() - 86400000 * 60).toISOString() },
-  { id: 'M003', name: '王五', phone: '13800138003', discount: 0.8, createdAt: new Date(Date.now() - 86400000 * 30).toISOString() },
+  { id: 'M001', name: '张三', phone: '13800138001', discount: 0.9, balance: 500, points: 320, createdAt: new Date(Date.now() - 86400000 * 90).toISOString() },
+  { id: 'M002', name: '李四', phone: '13800138002', discount: 0.85, balance: 200, points: 150, createdAt: new Date(Date.now() - 86400000 * 60).toISOString() },
+  { id: 'M003', name: '王五', phone: '13800138003', discount: 0.8, balance: 1000, points: 580, createdAt: new Date(Date.now() - 86400000 * 30).toISOString() },
 ];

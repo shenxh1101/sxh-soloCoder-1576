@@ -1,20 +1,117 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Phone, User, Calendar, CheckCircle2, Package, Clock, Receipt, CreditCard } from 'lucide-react';
+import {
+  ArrowLeft,
+  Phone,
+  User,
+  Calendar,
+  CheckCircle2,
+  Package,
+  Clock,
+  Receipt,
+  CreditCard,
+  Edit2,
+  Plus,
+  Minus,
+  Trash2,
+  X,
+  Check,
+  PlusCircle,
+} from 'lucide-react';
 import { useOrderStore } from '@/store';
-import type { OrderStatus, PaymentMethod } from '@/types';
-import { formatDate, formatCurrency, isOverdue, getOverdueDays } from '@/utils';
-import { PAYMENT_METHOD_NAMES } from '@/config/prices';
+import type { OrderStatus, PaymentMethod, OrderItem, WashType, ClothingType } from '@/types';
+import {
+  formatDate,
+  formatCurrency,
+  isOverdue,
+  getOverdueDays,
+  formatDiscount,
+  generateId,
+} from '@/utils';
+import {
+  PAYMENT_METHOD_NAMES,
+  CLOTHING_TYPE_NAMES,
+  WASH_TYPE_NAMES,
+} from '@/config/prices';
 import OrderStatusBadge from '@/components/OrderStatusBadge';
 import PaymentModal from '@/components/PaymentModal';
 
 export default function OrderDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { getOrderById, updateOrderStatus, processPayment } = useOrderStore();
+  const { getOrderById, updateOrderStatus, processPayment, updateOrderItems, getPrice, getMemberById } =
+    useOrderStore();
   const [showPayment, setShowPayment] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editItems, setEditItems] = useState<OrderItem[]>([]);
+  const [newWashType, setNewWashType] = useState<WashType>('water');
+  const [newClothingType, setNewClothingType] = useState<ClothingType>('shirt');
+  const [newQuantity, setNewQuantity] = useState(1);
 
   const order = getOrderById(id || '');
+
+  const canEdit = order && !order.payment && order.status !== 'picked';
+
+  const startEdit = () => {
+    if (!order) return;
+    setEditItems(order.items.map((item) => ({ ...item })));
+    setIsEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setIsEditing(false);
+    setEditItems([]);
+  };
+
+  const saveEdit = () => {
+    if (!order) return;
+    if (editItems.length === 0) {
+      alert('至少保留一件衣物');
+      return;
+    }
+    updateOrderItems(order.id, editItems);
+    setIsEditing(false);
+  };
+
+  const updateItemQuantity = (itemId: string, delta: number) => {
+    setEditItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item;
+        const newQty = Math.max(1, item.quantity + delta);
+        const unitPrice = item.unitPrice;
+        return { ...item, quantity: newQty, subtotal: Math.round(unitPrice * newQty * 100) / 100 };
+      })
+    );
+  };
+
+  const removeItem = (itemId: string) => {
+    setEditItems((prev) => prev.filter((item) => item.id !== itemId));
+  };
+
+  const addItem = () => {
+    const unitPrice = getPrice(newWashType, newClothingType);
+    const newItem: OrderItem = {
+      id: generateId(),
+      washType: newWashType,
+      clothingType: newClothingType,
+      clothingTypeName: CLOTHING_TYPE_NAMES[newClothingType],
+      washTypeName: WASH_TYPE_NAMES[newWashType],
+      quantity: newQuantity,
+      unitPrice,
+      subtotal: Math.round(unitPrice * newQuantity * 100) / 100,
+    };
+    setEditItems((prev) => [...prev, newItem]);
+    setNewQuantity(1);
+  };
+
+  const editTotalAmount = useMemo(() => {
+    return editItems.reduce((sum, item) => sum + item.subtotal, 0);
+  }, [editItems]);
+
+  const editFinalAmount = useMemo(() => {
+    if (!order) return 0;
+    return Math.round(editTotalAmount * order.memberDiscount * 100) / 100;
+  }, [editTotalAmount, order]);
 
   if (!order) {
     return (
@@ -124,37 +221,225 @@ export default function OrderDetail() {
           </div>
 
           <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-800 mb-4">衣物明细</h3>
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="text-left py-3 px-2 text-xs font-semibold text-slate-500 uppercase">洗涤类型</th>
-                  <th className="text-left py-3 px-2 text-xs font-semibold text-slate-500 uppercase">衣物</th>
-                  <th className="text-right py-3 px-2 text-xs font-semibold text-slate-500 uppercase">单价</th>
-                  <th className="text-right py-3 px-2 text-xs font-semibold text-slate-500 uppercase">数量</th>
-                  <th className="text-right py-3 px-2 text-xs font-semibold text-slate-500 uppercase">小计</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {order.items.map((item) => (
-                  <tr key={item.id}>
-                    <td className="py-3 px-2">
-                      <span
-                        className={`text-sm font-medium ${
-                          item.washType === 'dry' ? 'text-purple-600' : 'text-sky-600'
-                        }`}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-800">衣物明细</h3>
+              {canEdit && !isEditing && (
+                <button
+                  onClick={startEdit}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors text-sm font-medium"
+                >
+                  <Edit2 className="w-4 h-4" />
+                  修改订单
+                </button>
+              )}
+              {isEditing && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={cancelEdit}
+                    className="flex items-center gap-1 px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors text-sm font-medium"
+                  >
+                    <X className="w-4 h-4" />
+                    取消
+                  </button>
+                  <button
+                    onClick={saveEdit}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-emerald-500 text-white rounded-lg transition-colors text-sm font-medium hover:bg-emerald-600"
+                  >
+                    <Check className="w-4 h-4" />
+                    保存
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {isEditing ? (
+              <div className="space-y-4">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-100">
+                      <th className="text-left py-3 px-2 text-xs font-semibold text-slate-500 uppercase">
+                        洗涤类型
+                      </th>
+                      <th className="text-left py-3 px-2 text-xs font-semibold text-slate-500 uppercase">
+                        衣物
+                      </th>
+                      <th className="text-right py-3 px-2 text-xs font-semibold text-slate-500 uppercase">
+                        单价
+                      </th>
+                      <th className="text-center py-3 px-2 text-xs font-semibold text-slate-500 uppercase">
+                        数量
+                      </th>
+                      <th className="text-right py-3 px-2 text-xs font-semibold text-slate-500 uppercase">
+                        小计
+                      </th>
+                      <th className="text-center py-3 px-2 text-xs font-semibold text-slate-500 uppercase">
+                        操作
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {editItems.map((item) => (
+                      <tr key={item.id}>
+                        <td className="py-3 px-2">
+                          <span
+                            className={`text-sm font-medium ${
+                              item.washType === 'dry' ? 'text-purple-600' : 'text-sky-600'
+                            }`}
+                          >
+                            {item.washTypeName}
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 text-slate-700">{item.clothingTypeName}</td>
+                        <td className="py-3 px-2 text-right text-slate-600">
+                          ¥{item.unitPrice}
+                        </td>
+                        <td className="py-3 px-2">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => updateItemQuantity(item.id, -1)}
+                              className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 transition-colors"
+                            >
+                              <Minus className="w-4 h-4" />
+                            </button>
+                            <span className="w-8 text-center font-semibold text-slate-800">
+                              {item.quantity}
+                            </span>
+                            <button
+                              onClick={() => updateItemQuantity(item.id, 1)}
+                              className="w-7 h-7 rounded-lg bg-sky-100 flex items-center justify-center text-sky-600 hover:bg-sky-200 transition-colors"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="py-3 px-2 text-right font-semibold text-slate-800">
+                          ¥{item.subtotal}
+                        </td>
+                        <td className="py-3 px-2 text-center">
+                          <button
+                            onClick={() => removeItem(item.id)}
+                            className="text-rose-500 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <PlusCircle className="w-5 h-5 text-sky-600" />
+                    <span className="font-medium text-slate-700">添加衣物</span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-3">
+                    <div>
+                      <label className="text-xs text-slate-500 mb-1 block">洗涤类型</label>
+                      <select
+                        value={newWashType}
+                        onChange={(e) => setNewWashType(e.target.value as WashType)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                       >
-                        {item.washTypeName}
-                      </span>
-                    </td>
-                    <td className="py-3 px-2 text-slate-700">{item.clothingTypeName}</td>
-                    <td className="py-3 px-2 text-right text-slate-600">¥{item.unitPrice}</td>
-                    <td className="py-3 px-2 text-right text-slate-600">{item.quantity}</td>
-                    <td className="py-3 px-2 text-right font-semibold text-slate-800">¥{item.subtotal}</td>
+                        <option value="water">水洗</option>
+                        <option value="dry">干洗</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500 mb-1 block">衣物类型</label>
+                      <select
+                        value={newClothingType}
+                        onChange={(e) => setNewClothingType(e.target.value as ClothingType)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                      >
+                        <option value="shirt">衬衫</option>
+                        <option value="pants">裤子</option>
+                        <option value="coat">外套</option>
+                        <option value="bedding">被套</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-500 mb-1 block">数量</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={newQuantity}
+                        onChange={(e) => setNewQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        onClick={addItem}
+                        className="w-full py-2 bg-gradient-to-r from-sky-500 to-cyan-400 text-white text-sm font-medium rounded-lg hover:shadow-md transition-all"
+                      >
+                        添加
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">
+                    单价：¥{getPrice(newWashType, newClothingType)} / 件
+                  </p>
+                </div>
+
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                  <div className="flex items-center justify-between">
+                    <span className="text-amber-700 font-medium">修改后应付金额</span>
+                    <span className="text-2xl font-bold text-amber-700">
+                      {formatCurrency(editFinalAmount)}
+                    </span>
+                  </div>
+                  {order.memberDiscount < 1 && (
+                    <p className="text-xs text-amber-600 mt-1 text-right">
+                      原价 {formatCurrency(editTotalAmount)}，{formatDiscount(order.memberDiscount)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left py-3 px-2 text-xs font-semibold text-slate-500 uppercase">
+                      洗涤类型
+                    </th>
+                    <th className="text-left py-3 px-2 text-xs font-semibold text-slate-500 uppercase">
+                      衣物
+                    </th>
+                    <th className="text-right py-3 px-2 text-xs font-semibold text-slate-500 uppercase">
+                      单价
+                    </th>
+                    <th className="text-right py-3 px-2 text-xs font-semibold text-slate-500 uppercase">
+                      数量
+                    </th>
+                    <th className="text-right py-3 px-2 text-xs font-semibold text-slate-500 uppercase">
+                      小计
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {order.items.map((item) => (
+                    <tr key={item.id}>
+                      <td className="py-3 px-2">
+                        <span
+                          className={`text-sm font-medium ${
+                            item.washType === 'dry' ? 'text-purple-600' : 'text-sky-600'
+                          }`}
+                        >
+                          {item.washTypeName}
+                        </span>
+                      </td>
+                      <td className="py-3 px-2 text-slate-700">{item.clothingTypeName}</td>
+                      <td className="py-3 px-2 text-right text-slate-600">¥{item.unitPrice}</td>
+                      <td className="py-3 px-2 text-right text-slate-600">{item.quantity}</td>
+                      <td className="py-3 px-2 text-right font-semibold text-slate-800">
+                        ¥{item.subtotal}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
 
           {order.payment && (
@@ -242,7 +527,7 @@ export default function OrderDetail() {
                   </div>
                   {order.receipt.memberDiscount < 1 && (
                     <div className="flex justify-between text-emerald-600">
-                      <span>会员{Math.round(order.receipt.memberDiscount * 10)}折</span>
+                      <span>会员{formatDiscount(order.receipt.memberDiscount)}</span>
                       <span>-{formatCurrency(order.receipt.totalAmount - order.receipt.finalAmount)}</span>
                     </div>
                   )}
@@ -310,7 +595,7 @@ export default function OrderDetail() {
                 <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
                   <p className="text-sm text-emerald-700">
                     会员号：<span className="font-semibold">{order.memberId}</span>
-                    <span className="ml-2">享受 {Math.round(order.memberDiscount * 10)} 折优惠</span>
+                    <span className="ml-2">享受 {formatDiscount(order.memberDiscount)} 优惠</span>
                   </p>
                 </div>
               )}
@@ -333,7 +618,7 @@ export default function OrderDetail() {
               </div>
               {order.memberDiscount < 1 && (
                 <div className="flex items-center justify-between text-emerald-600">
-                  <span>会员折扣 ({Math.round(order.memberDiscount * 10)}折)</span>
+                  <span>会员折扣 ({formatDiscount(order.memberDiscount)})</span>
                   <span className="font-medium">
                     -{formatCurrency(Math.round((order.totalAmount - order.finalAmount) * 100) / 100)}
                   </span>
@@ -380,6 +665,10 @@ export default function OrderDetail() {
           customerPhone={order.customerPhone}
           amount={order.finalAmount}
           memberDiscount={order.memberDiscount}
+          memberId={order.memberId}
+          memberBalance={
+            order.memberId ? getMemberById(order.memberId)?.balance || 0 : 0
+          }
           receipt={order.receipt || null}
           onConfirm={handlePaymentConfirm}
           onCancel={() => setShowPayment(false)}

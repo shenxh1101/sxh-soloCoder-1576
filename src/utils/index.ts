@@ -36,6 +36,12 @@ export function getOverdueDays(order: Order): number {
   return Math.max(0, days - 3);
 }
 
+export function getReadyDays(order: Order): number {
+  if (order.status === 'pending') return 0;
+  const referenceDate = order.readyAt || order.createdAt;
+  return getDaysBetween(new Date(referenceDate), new Date());
+}
+
 function getDaysBetween(start: Date, end: Date): number {
   const msPerDay = 1000 * 60 * 60 * 24;
   const startDate = new Date(start.getFullYear(), start.getMonth(), start.getDate());
@@ -189,6 +195,12 @@ export function formatDateShort(dateStr: string): string {
 
 export function formatCurrency(amount: number): string {
   return `¥${amount.toFixed(2)}`;
+}
+
+export function formatDiscount(discount: number): string {
+  if (discount >= 1) return '不打折';
+  const discountNum = Math.round(discount * 100);
+  return `${discountNum}折`;
 }
 
 export function formatReceipt(content: string): string {

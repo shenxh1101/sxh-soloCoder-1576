@@ -60,6 +60,7 @@ export interface Order {
   finalAmount: number;
   payment?: PaymentRecord;
   receipt?: ReceiptData;
+  reminderRecords?: ReminderRecord[];
   createdAt: string;
   readyAt?: string;
   pickedAt?: string;
@@ -70,7 +71,33 @@ export interface Member {
   name: string;
   phone: string;
   discount: number;
+  balance: number;
+  points: number;
   createdAt: string;
+}
+
+export interface RechargeRecord {
+  id: string;
+  memberId: string;
+  amount: number;
+  rechargeAt: string;
+}
+
+export interface ConsumeRecord {
+  id: string;
+  memberId: string;
+  orderId: string;
+  orderNo: string;
+  amount: number;
+  pointsEarned: number;
+  consumeAt: string;
+}
+
+export interface ReminderRecord {
+  id: string;
+  orderId: string;
+  remindedAt: string;
+  note?: string;
 }
 
 export interface MonthlyStats {

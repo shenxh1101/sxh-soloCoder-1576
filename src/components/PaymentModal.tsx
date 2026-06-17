@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react';
-import { X, DollarSign, Receipt, Check, Banknote, Smartphone, CreditCard, Award } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { X, DollarSign, Receipt, Check, Banknote, Smartphone, CreditCard, Award, Wallet, AlertTriangle } from 'lucide-react';
 import type { PaymentMethod, ReceiptData } from '@/types';
 import { PAYMENT_METHOD_NAMES } from '@/config/prices';
-import { formatCurrency, formatDate } from '@/utils';
+import { formatCurrency, formatDate, formatDiscount } from '@/utils';
 
 interface Props {
   orderNo: string;
@@ -10,6 +10,8 @@ interface Props {
   customerPhone: string;
   amount: number;
   memberDiscount: number;
+  memberId?: string;
+  memberBalance?: number;
   onConfirm: (data: { paymentMethod: PaymentMethod; receivedAmount: number }) => void;
   onCancel: () => void;
   receipt?: ReceiptData | null;
@@ -28,6 +30,8 @@ export default function PaymentModal({
   customerPhone,
   amount,
   memberDiscount,
+  memberId,
+  memberBalance = 0,
   onConfirm,
   onCancel,
   receipt,
@@ -43,6 +47,17 @@ export default function PaymentModal({
     [numReceived, amount]
   );
 
+  const isMemberCard = paymentMethod === 'card';
+  const hasMember = !!memberId;
+  const balanceInsufficient = isMemberCard && hasMember && memberBalance < amount;
+  const canUseMemberCard = hasMember && memberBalance >= amount;
+
+  useEffect(() => {
+    if (isMemberCard && canUseMemberCard) {
+      setReceivedAmount(amount.toString());
+    }
+  }, [isMemberCard, canUseMemberCard, amount]);
+
   const handleQuickAmount = (val: number) => {
     setReceivedAmount(val.toString());
   };
@@ -50,6 +65,14 @@ export default function PaymentModal({
   const handleConfirm = () => {
     if (numReceived < amount) {
       alert('实收金额不能小于应收金额');
+      return;
+    }
+    if (isMemberCard && !hasMember) {
+      alert('该订单不是会员订单，无法使用会员卡支付');
+      return;
+    }
+    if (isMemberCard && balanceInsufficient) {
+      alert('会员卡余额不足，请选择其他支付方式或充值');
       return;
     }
     onConfirm({ paymentMethod, receivedAmount: numReceived });
@@ -99,7 +122,7 @@ export default function PaymentModal({
               <p className="text-4xl font-bold text-slate-800">{formatCurrency(amount)}</p>
               {memberDiscount < 1 && (
                 <p className="text-sm text-emerald-600 mt-2">
-                  已享受会员 {Math.round(memberDiscount * 10)} 折优惠
+                  已享受会员 {formatDiscount(memberDiscount)} 优惠
                 </p>
               )}
             </div>
@@ -107,22 +130,71 @@ export default function PaymentModal({
             <div>
               <p className="text-sm font-medium text-slate-700 mb-3">付款方式</p>
               <div className="grid grid-cols-4 gap-2">
-                {paymentMethods.map((m) => (
-                  <button
-                    key={m.value}
-                    onClick={() => setPaymentMethod(m.value)}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${
-                      paymentMethod === m.value
-                        ? 'border-sky-500 bg-sky-50 text-sky-700'
-                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
-                    }`}
-                  >
-                    <m.icon className="w-5 h-5" />
-                    <span className="text-xs font-semibold">{m.label}</span>
-                  </button>
-                ))}
+                {paymentMethods.map((m) => {
+                  const disabled = m.value === 'card' && !hasMember;
+                  return (
+                    <button
+                      key={m.value}
+                      onClick={() => !disabled && setPaymentMethod(m.value)}
+                      disabled={disabled}
+                      className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${
+                        paymentMethod === m.value
+                          ? 'border-sky-500 bg-sky-50 text-sky-700'
+                          : disabled
+                          ? 'border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed'
+                          : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                      }`}
+                    >
+                      <m.icon className="w-5 h-5" />
+                      <span className="text-xs font-semibold">{m.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
+
+            {isMemberCard && hasMember && (
+              <div
+                className={`p-4 rounded-xl border ${
+                  balanceInsufficient
+                    ? 'bg-rose-50 border-rose-200'
+                    : 'bg-emerald-50 border-emerald-200'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Wallet
+                    className={`w-5 h-5 ${
+                      balanceInsufficient ? 'text-rose-600' : 'text-emerald-600'
+                    }`}
+                  />
+                  <span
+                    className={`font-medium ${
+                      balanceInsufficient ? 'text-rose-700' : 'text-emerald-700'
+                    }`}
+                  >
+                    会员卡余额
+                  </span>
+                </div>
+                <p
+                  className={`text-2xl font-bold ${
+                    balanceInsufficient ? 'text-rose-700' : 'text-emerald-700'
+                  }`}
+                >
+                  {formatCurrency(memberBalance)}
+                </p>
+                {balanceInsufficient && (
+                  <p className="text-xs text-rose-600 mt-2 flex items-center gap-1">
+                    <AlertTriangle className="w-4 h-4" />
+                    余额不足，还差 {formatCurrency(amount - memberBalance)}
+                  </p>
+                )}
+                {!balanceInsufficient && (
+                  <p className="text-xs text-emerald-600 mt-2">
+                    支付后剩余 {formatCurrency(memberBalance - amount)}
+                  </p>
+                )}
+              </div>
+            )}
 
             <div>
               <p className="text-sm font-medium text-slate-700 mb-2">实收金额</p>
@@ -228,7 +300,7 @@ export default function PaymentModal({
                 </div>
                 {displayReceipt.memberDiscount < 1 && (
                   <div className="flex justify-between text-sm text-emerald-600">
-                    <span>会员{Math.round(displayReceipt.memberDiscount * 10)}折</span>
+                    <span>会员{formatDiscount(displayReceipt.memberDiscount)}</span>
                     <span>
                       -{formatCurrency(displayReceipt.totalAmount - displayReceipt.finalAmount)}
                     </span>

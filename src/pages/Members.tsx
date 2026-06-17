@@ -11,11 +11,14 @@ import {
   User,
   X,
   Check,
+  Eye,
+  Wallet,
+  Trophy,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useOrderStore } from '@/store';
 import type { Member } from '@/types';
-import { formatDateShort } from '@/utils';
+import { formatDateShort, formatDiscount, formatCurrency } from '@/utils';
 
 export default function Members() {
   const navigate = useNavigate();
@@ -131,6 +134,8 @@ export default function Members() {
                 <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">姓名</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">手机号</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">折扣</th>
+                <th className="text-right py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">余额</th>
+                <th className="text-right py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">积分</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">入会时间</th>
                 <th className="text-right py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">操作</th>
               </tr>
@@ -138,13 +143,17 @@ export default function Members() {
             <tbody className="divide-y divide-slate-50">
               {filteredMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     {keyword ? '未找到匹配的会员' : '暂无会员'}
                   </td>
                 </tr>
               ) : (
                 filteredMembers.map((member) => (
-                  <tr key={member.id} className="hover:bg-slate-50 transition-colors">
+                  <tr
+                    key={member.id}
+                    className="hover:bg-slate-50 transition-colors cursor-pointer"
+                    onClick={() => navigate(`/members/${member.id}`)}
+                  >
                     <td className="py-4 px-4">
                       <span className="font-mono font-semibold text-sky-600">{member.id}</span>
                     </td>
@@ -168,22 +177,42 @@ export default function Members() {
                         }`}
                       >
                         <Percent className="w-3 h-3 mr-1" />
-                        {member.discount === 1 ? '不打折' : `${Math.round(member.discount * 10)}折`}
+                        {formatDiscount(member.discount)}
                       </span>
                     </td>
-                    <td className="py-4 px-4 text-sm text-slate-500">{formatDateShort(member.createdAt)}</td>
+                    <td className="py-4 px-4 text-right">
+                      <span className="font-semibold text-emerald-600 flex items-center justify-end gap-1">
+                        <Wallet className="w-4 h-4" />
+                        {formatCurrency(member.balance)}
+                      </span>
+                    </td>
+                    <td className="py-4 px-4 text-right">
+                      <span className="font-semibold text-amber-600 flex items-center justify-end gap-1">
+                        <Trophy className="w-4 h-4" />
+                        {member.points}
+                      </span>
+                    </td>
+                    <td className="py-4 px-4 text-sm text-slate-500">
+                      {formatDateShort(member.createdAt)}
+                    </td>
                     <td className="py-4 px-4">
                       {confirmDelete === member.id ? (
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => handleDelete(member.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(member.id);
+                            }}
                             className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-500 text-white text-xs font-medium rounded-lg hover:bg-rose-600 transition-colors"
                           >
                             <Check className="w-3.5 h-3.5" />
                             确认
                           </button>
                           <button
-                            onClick={() => setConfirmDelete(null)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDelete(null);
+                            }}
                             className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-200 text-slate-700 text-xs font-medium rounded-lg hover:bg-slate-300 transition-colors"
                           >
                             <X className="w-3.5 h-3.5" />
@@ -193,14 +222,30 @@ export default function Members() {
                       ) : (
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => openEditModal(member)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/members/${member.id}`);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors text-sm font-medium"
+                          >
+                            <Eye className="w-4 h-4" />
+                            详情
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditModal(member);
+                            }}
                             className="flex items-center gap-1 px-2.5 py-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors text-sm font-medium"
                           >
                             <Edit2 className="w-4 h-4" />
                             编辑
                           </button>
                           <button
-                            onClick={() => setConfirmDelete(member.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDelete(member.id);
+                            }}
                             className="flex items-center gap-1 px-2.5 py-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors text-sm font-medium"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -291,7 +336,7 @@ export default function Members() {
                   ))}
                 </div>
                 <p className="text-xs text-slate-500 mt-2">
-                  当前折扣：{formData.discount === 1 ? '不打折' : `${Math.round(formData.discount * 10)}折`}
+                  当前折扣：{formatDiscount(formData.discount)}
                 </p>
               </div>
             </div>

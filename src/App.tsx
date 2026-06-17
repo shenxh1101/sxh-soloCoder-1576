@@ -4,9 +4,11 @@ import Dashboard from '@/pages/Dashboard';
 import Orders from '@/pages/Orders';
 import NewOrder from '@/pages/NewOrder';
 import OrderDetail from '@/pages/OrderDetail';
+import PickupList from '@/pages/PickupList';
 import Statistics from '@/pages/Statistics';
 import PriceSettings from '@/pages/PriceSettings';
 import Members from '@/pages/Members';
+import MemberDetail from '@/pages/MemberDetail';
 
 export default function App() {
   return (
@@ -17,9 +19,11 @@ export default function App() {
           <Route path="orders" element={<Orders />} />
           <Route path="orders/new" element={<NewOrder />} />
           <Route path="orders/:id" element={<OrderDetail />} />
+          <Route path="pickup" element={<PickupList />} />
           <Route path="statistics" element={<Statistics />} />
           <Route path="prices" element={<PriceSettings />} />
           <Route path="members" element={<Members />} />
+          <Route path="members/:id" element={<MemberDetail />} />
         </Route>
       </Routes>
     </Router>

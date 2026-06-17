@@ -1,8 +1,26 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Order, OrderStatus, Member, OrderItem, PriceConfig, PaymentRecord, ReceiptData, PaymentMethod } from '@/types';
-import { generateId } from '@/utils';
-import { DEFAULT_MEMBERS, DEFAULT_PRICE_CONFIG, PAYMENT_METHOD_NAMES } from '@/config/prices';
+import type {
+  Order,
+  OrderStatus,
+  Member,
+  OrderItem,
+  PriceConfig,
+  PaymentRecord,
+  ReceiptData,
+  PaymentMethod,
+  RechargeRecord,
+  ConsumeRecord,
+  ReminderRecord,
+} from '@/types';
+import { generateId, calculateTotalAmount, calculateFinalAmount } from '@/utils';
+import {
+  DEFAULT_MEMBERS,
+  DEFAULT_PRICE_CONFIG,
+  PAYMENT_METHOD_NAMES,
+  CLOTHING_TYPE_NAMES,
+  WASH_TYPE_NAMES,
+} from '@/config/prices';
 
 let orderCounter = 1000;
 
@@ -15,28 +33,43 @@ function generateOrderNo(): string {
   return `XY${year}${month}${day}${String(orderCounter).padStart(4, '0')}`;
 }
 
+const POINTS_PER_YUAN = 1;
+
 interface OrderStore {
   orders: Order[];
   members: Member[];
   priceConfig: PriceConfig;
+  rechargeRecords: RechargeRecord[];
+  consumeRecords: ConsumeRecord[];
+
   addOrder: (order: Omit<Order, 'id' | 'orderNo' | 'createdAt'>) => Order;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
-  processPayment: (orderId: string, data: {
-    paymentMethod: PaymentMethod;
-    receivedAmount: number;
-  }) => { order: Order; receipt: ReceiptData };
+  updateOrderItems: (orderId: string, items: OrderItem[]) => void;
+  processPayment: (
+    orderId: string,
+    data: {
+      paymentMethod: PaymentMethod;
+      receivedAmount: number;
+    }
+  ) => { order: Order; receipt: ReceiptData };
   getOrderById: (orderId: string) => Order | undefined;
   searchOrders: (keyword: string) => Order[];
   getOrdersByStatus: (status?: OrderStatus) => Order[];
+  addReminder: (orderId: string, note?: string) => void;
+
   getPrice: (washType: 'water' | 'dry', clothingType: OrderItem['clothingType']) => number;
   updatePriceConfig: (config: PriceConfig) => void;
-  addMember: (member: Omit<Member, 'id' | 'createdAt'>) => Member;
+
+  addMember: (member: Omit<Member, 'id' | 'createdAt' | 'balance' | 'points'>) => Member;
   updateMember: (id: string, data: Partial<Omit<Member, 'id' | 'createdAt'>>) => void;
   deleteMember: (id: string) => void;
   searchMembers: (keyword: string) => Member[];
   getMemberByPhone: (phone: string) => Member | undefined;
   getMemberById: (id: string) => Member | undefined;
   generateMemberId: () => string;
+  rechargeMember: (memberId: string, amount: number) => RechargeRecord;
+  getMemberRechargeRecords: (memberId: string) => RechargeRecord[];
+  getMemberConsumeRecords: (memberId: string) => ConsumeRecord[];
 }
 
 function createMockOrders(priceConfig: PriceConfig): Order[] {
@@ -47,14 +80,18 @@ function createMockOrders(priceConfig: PriceConfig): Order[] {
     return d.toISOString();
   };
 
-  const mockItems = (washType: 'water' | 'dry', clothingType: OrderItem['clothingType'], qty: number): OrderItem => {
+  const mockItems = (
+    washType: 'water' | 'dry',
+    clothingType: OrderItem['clothingType'],
+    qty: number
+  ): OrderItem => {
     const unitPrice = priceConfig[washType][clothingType];
     return {
       id: generateId(),
       washType,
       clothingType,
-      clothingTypeName: { shirt: '衬衫', pants: '裤子', coat: '外套', bedding: '被套' }[clothingType],
-      washTypeName: washType === 'water' ? '水洗' : '干洗',
+      clothingTypeName: CLOTHING_TYPE_NAMES[clothingType],
+      washTypeName: WASH_TYPE_NAMES[washType],
       quantity: qty,
       unitPrice,
       subtotal: unitPrice * qty,
@@ -74,6 +111,9 @@ function createMockOrders(priceConfig: PriceConfig): Order[] {
       totalAmount: 50,
       finalAmount: 45,
       createdAt: daysAgo(1),
+      reminderRecords: [
+        { id: generateId(), orderId: '', remindedAt: daysAgo(0), note: '电话提醒' },
+      ],
     },
     {
       id: generateId(),
@@ -102,6 +142,9 @@ function createMockOrders(priceConfig: PriceConfig): Order[] {
       finalAmount: 44,
       createdAt: daysAgo(5),
       readyAt: daysAgo(4),
+      reminderRecords: [
+        { id: generateId(), orderId: '', remindedAt: daysAgo(2), note: '已电话通知' },
+      ],
     },
     {
       id: generateId(),
@@ -176,12 +219,30 @@ function createMockOrders(priceConfig: PriceConfig): Order[] {
   ];
 }
 
+function createMockRechargeRecords(): RechargeRecord[] {
+  const now = new Date();
+  const daysAgo = (days: number) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() - days);
+    return d.toISOString();
+  };
+  return [
+    { id: generateId(), memberId: 'M001', amount: 300, rechargeAt: daysAgo(60) },
+    { id: generateId(), memberId: 'M001', amount: 200, rechargeAt: daysAgo(30) },
+    { id: generateId(), memberId: 'M002', amount: 200, rechargeAt: daysAgo(45) },
+    { id: generateId(), memberId: 'M003', amount: 500, rechargeAt: daysAgo(20) },
+    { id: generateId(), memberId: 'M003', amount: 500, rechargeAt: daysAgo(10) },
+  ];
+}
+
 export const useOrderStore = create<OrderStore>()(
   persist(
     (set, get) => ({
       orders: createMockOrders(DEFAULT_PRICE_CONFIG),
       members: DEFAULT_MEMBERS,
       priceConfig: DEFAULT_PRICE_CONFIG,
+      rechargeRecords: createMockRechargeRecords(),
+      consumeRecords: [],
 
       getPrice: (washType, clothingType) => {
         return get().priceConfig[washType][clothingType];
@@ -218,12 +279,36 @@ export const useOrderStore = create<OrderStore>()(
         }));
       },
 
+      updateOrderItems: (orderId, newItems) => {
+        const order = get().getOrderById(orderId);
+        if (!order) return;
+        if (order.payment) return;
+
+        const totalAmount = calculateTotalAmount(newItems);
+        const finalAmount = calculateFinalAmount(totalAmount, order.memberDiscount);
+
+        set((state) => ({
+          orders: state.orders.map((o) => {
+            if (o.id !== orderId) return o;
+            return {
+              ...o,
+              items: newItems,
+              totalAmount,
+              finalAmount,
+            };
+          }),
+        }));
+      },
+
       processPayment: (orderId, data) => {
         const order = get().getOrderById(orderId);
         if (!order) throw new Error('订单不存在');
 
         const paidAt = new Date().toISOString();
-        const change = Math.max(0, Math.round((data.receivedAmount - order.finalAmount) * 100) / 100);
+        const change = Math.max(
+          0,
+          Math.round((data.receivedAmount - order.finalAmount) * 100) / 100
+        );
 
         const payment: PaymentRecord = {
           id: generateId(),
@@ -249,6 +334,62 @@ export const useOrderStore = create<OrderStore>()(
           change,
           paidAt,
         };
+
+        if (data.paymentMethod === 'card' && order.memberId) {
+          const member = get().getMemberById(order.memberId);
+          if (!member) throw new Error('会员不存在');
+          if (member.balance < order.finalAmount) {
+            throw new Error('会员余额不足');
+          }
+
+          const newBalance = Math.round((member.balance - order.finalAmount) * 100) / 100;
+          const pointsEarned = Math.floor(order.finalAmount * POINTS_PER_YUAN);
+          const newPoints = member.points + pointsEarned;
+
+          set((state) => ({
+            members: state.members.map((m) =>
+              m.id === order.memberId ? { ...m, balance: newBalance, points: newPoints } : m
+            ),
+          }));
+
+          const consumeRecord: ConsumeRecord = {
+            id: generateId(),
+            memberId: order.memberId,
+            orderId,
+            orderNo: order.orderNo,
+            amount: order.finalAmount,
+            pointsEarned,
+            consumeAt: paidAt,
+          };
+          set((state) => ({
+            consumeRecords: [consumeRecord, ...state.consumeRecords],
+          }));
+        } else if (order.memberId) {
+          const member = get().getMemberById(order.memberId);
+          if (member) {
+            const pointsEarned = Math.floor(order.finalAmount * POINTS_PER_YUAN);
+            const newPoints = member.points + pointsEarned;
+
+            set((state) => ({
+              members: state.members.map((m) =>
+                m.id === order.memberId ? { ...m, points: newPoints } : m
+              ),
+            }));
+
+            const consumeRecord: ConsumeRecord = {
+              id: generateId(),
+              memberId: order.memberId,
+              orderId,
+              orderNo: order.orderNo,
+              amount: order.finalAmount,
+              pointsEarned,
+              consumeAt: paidAt,
+            };
+            set((state) => ({
+              consumeRecords: [consumeRecord, ...state.consumeRecords],
+            }));
+          }
+        }
 
         set((state) => ({
           orders: state.orders.map((o) => {
@@ -288,6 +429,22 @@ export const useOrderStore = create<OrderStore>()(
         return get().orders.filter((o) => o.status === status);
       },
 
+      addReminder: (orderId, note) => {
+        const reminder: ReminderRecord = {
+          id: generateId(),
+          orderId,
+          remindedAt: new Date().toISOString(),
+          note,
+        };
+        set((state) => ({
+          orders: state.orders.map((o) => {
+            if (o.id !== orderId) return o;
+            const records = o.reminderRecords || [];
+            return { ...o, reminderRecords: [reminder, ...records] };
+          }),
+        }));
+      },
+
       generateMemberId: () => {
         const members = get().members;
         const maxId = members.reduce((max, m) => {
@@ -301,6 +458,8 @@ export const useOrderStore = create<OrderStore>()(
         const newMember: Member = {
           ...memberData,
           id: get().generateMemberId(),
+          balance: 0,
+          points: 0,
           createdAt: new Date().toISOString(),
         };
         set((state) => ({ members: [...state.members, newMember] }));
@@ -336,6 +495,40 @@ export const useOrderStore = create<OrderStore>()(
 
       getMemberById: (id) => {
         return get().members.find((m) => m.id.toLowerCase() === id.trim().toLowerCase());
+      },
+
+      rechargeMember: (memberId, amount) => {
+        const member = get().getMemberById(memberId);
+        if (!member) throw new Error('会员不存在');
+        if (amount <= 0) throw new Error('充值金额必须大于0');
+
+        const newBalance = Math.round((member.balance + amount) * 100) / 100;
+
+        set((state) => ({
+          members: state.members.map((m) =>
+            m.id === memberId ? { ...m, balance: newBalance } : m
+          ),
+        }));
+
+        const record: RechargeRecord = {
+          id: generateId(),
+          memberId,
+          amount,
+          rechargeAt: new Date().toISOString(),
+        };
+        set((state) => ({
+          rechargeRecords: [record, ...state.rechargeRecords],
+        }));
+
+        return record;
+      },
+
+      getMemberRechargeRecords: (memberId) => {
+        return get().rechargeRecords.filter((r) => r.memberId === memberId);
+      },
+
+      getMemberConsumeRecords: (memberId) => {
+        return get().consumeRecords.filter((r) => r.memberId === memberId);
       },
     }),
     {
