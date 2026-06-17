@@ -6,6 +6,18 @@ export type OrderStatus = 'pending' | 'ready' | 'picked';
 
 export type PaymentMethod = 'cash' | 'wechat' | 'alipay' | 'card';
 
+export type MemberLevel = 'normal' | 'silver' | 'gold';
+
+export interface MemberLevelConfig {
+  level: MemberLevel;
+  name: string;
+  discount: number;
+  minConsume: number;
+  minPoints: number;
+  color: string;
+  bgColor: string;
+}
+
 export interface PriceConfig {
   water: Record<ClothingType, number>;
   dry: Record<ClothingType, number>;
@@ -30,6 +42,9 @@ export interface PaymentRecord {
   change: number;
   paymentMethod: PaymentMethod;
   paidAt: string;
+  balanceDeducted?: number;
+  balanceBefore?: number;
+  balanceAfter?: number;
 }
 
 export interface ReceiptData {
@@ -45,6 +60,10 @@ export interface ReceiptData {
   receivedAmount: number;
   change: number;
   paidAt: string;
+  isBalancePayment?: boolean;
+  balanceDeducted?: number;
+  balanceBefore?: number;
+  balanceAfter?: number;
 }
 
 export interface Order {
@@ -73,6 +92,8 @@ export interface Member {
   discount: number;
   balance: number;
   points: number;
+  level: MemberLevel;
+  totalConsume: number;
   createdAt: string;
 }
 
@@ -80,6 +101,8 @@ export interface RechargeRecord {
   id: string;
   memberId: string;
   amount: number;
+  balanceBefore: number;
+  balanceAfter: number;
   rechargeAt: string;
 }
 
@@ -90,6 +113,11 @@ export interface ConsumeRecord {
   orderNo: string;
   amount: number;
   pointsEarned: number;
+  paymentMethod: PaymentMethod;
+  isBalancePayment: boolean;
+  balanceDeducted?: number;
+  balanceBefore?: number;
+  balanceAfter?: number;
   consumeAt: string;
 }
 
@@ -110,6 +138,15 @@ export interface MonthlyStats {
   dryRevenue: number;
   receivedRevenue: number;
   unpaidRevenue: number;
+}
+
+export interface MemberStats {
+  totalRecharge: number;
+  totalMemberConsume: number;
+  balancePaymentAmount: number;
+  balancePaymentRatio: number;
+  totalPointsIssued: number;
+  normalOrderRevenue: number;
 }
 
 export interface CustomerRank {

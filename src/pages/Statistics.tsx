@@ -12,6 +12,10 @@ import {
   Wallet,
   CreditCard,
   Clock,
+  Coins,
+  PieChart,
+  Users,
+  Gift,
 } from 'lucide-react';
 import { useOrderStore } from '@/store';
 import {
@@ -22,7 +26,7 @@ import {
 } from '@/utils';
 
 export default function Statistics() {
-  const { orders } = useOrderStore();
+  const { orders, getMemberStats } = useOrderStore();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -30,6 +34,7 @@ export default function Statistics() {
   const stats = useMemo(() => getMonthlyStatistics(orders, year, month), [orders, year, month]);
   const rankingByAmount = useMemo(() => getCustomerRankingByAmount(orders, year, month), [orders, year, month]);
   const rankingByItems = useMemo(() => getCustomerRankingByItems(orders, year, month), [orders, year, month]);
+  const memberStats = useMemo(() => getMemberStats(year, month), [getMemberStats, year, month]);
 
   const goPrevMonth = () => {
     if (month === 0) {
@@ -122,6 +127,42 @@ export default function Statistics() {
       color: 'from-rose-500 to-red-400',
       bgColor: 'bg-rose-50',
       iconColor: 'text-rose-500',
+    },
+  ];
+
+  const memberStatCards = [
+    {
+      label: '会员充值总额',
+      value: memberStats.totalRecharge,
+      icon: Coins,
+      color: 'from-emerald-500 to-teal-400',
+      bgColor: 'bg-emerald-50',
+      iconColor: 'text-emerald-500',
+    },
+    {
+      label: '会员消费总额',
+      value: memberStats.totalMemberConsume,
+      icon: Users,
+      color: 'from-sky-500 to-cyan-400',
+      bgColor: 'bg-sky-50',
+      iconColor: 'text-sky-500',
+    },
+    {
+      label: '普通订单收入',
+      value: memberStats.normalOrderRevenue,
+      icon: DollarSign,
+      color: 'from-violet-500 to-purple-400',
+      bgColor: 'bg-violet-50',
+      iconColor: 'text-violet-500',
+    },
+    {
+      label: '积分发放数量',
+      value: memberStats.totalPointsIssued,
+      icon: Gift,
+      color: 'from-amber-500 to-orange-400',
+      bgColor: 'bg-amber-50',
+      iconColor: 'text-amber-500',
+      unit: '分',
     },
   ];
 
@@ -252,6 +293,79 @@ export default function Statistics() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="grid grid-cols-4 gap-6">
+        {memberStatCards.map((stat) => (
+          <div
+            key={stat.label}
+            className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300"
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-slate-500 font-medium">{stat.label}</p>
+                <p className="text-3xl font-bold text-slate-800 mt-2">
+                  {stat.unit ? `${stat.value} ${stat.unit}` : formatCurrency(stat.value)}
+                </p>
+              </div>
+              <div className={`w-12 h-12 rounded-xl ${stat.bgColor} flex items-center justify-center`}>
+                <stat.icon className={`w-6 h-6 ${stat.iconColor}`} />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+        <div className="flex items-center gap-2 mb-6">
+          <PieChart className="w-5 h-5 text-sky-600" />
+          <h3 className="text-lg font-semibold text-slate-800">会员经营分析</h3>
+        </div>
+        <div className="grid grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-slate-600">余额支付金额</span>
+                <span className="text-sm font-semibold text-sky-600">
+                  {formatCurrency(memberStats.balancePaymentAmount)}
+                </span>
+              </div>
+              <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-sky-500 to-cyan-400 rounded-full transition-all duration-700"
+                  style={{ width: `${Math.min(100, memberStats.balancePaymentRatio * 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                余额支付占比：{(memberStats.balancePaymentRatio * 100).toFixed(1)}%
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-4 bg-sky-50 rounded-xl">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="w-4 h-4 text-sky-600" />
+                <p className="text-xs text-sky-700">会员收入占比</p>
+              </div>
+              <p className="text-2xl font-bold text-sky-600">
+                {stats.totalRevenue > 0
+                  ? ((memberStats.totalMemberConsume / stats.totalRevenue) * 100).toFixed(1)
+                  : 0}%
+              </p>
+            </div>
+            <div className="p-4 bg-emerald-50 rounded-xl">
+              <div className="flex items-center gap-2 mb-2">
+                <DollarSign className="w-4 h-4 text-emerald-600" />
+                <p className="text-xs text-emerald-700">普通订单占比</p>
+              </div>
+              <p className="text-2xl font-bold text-emerald-600">
+                {stats.totalRevenue > 0
+                  ? ((memberStats.normalOrderRevenue / stats.totalRevenue) * 100).toFixed(1)
+                  : 0}%
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-6">

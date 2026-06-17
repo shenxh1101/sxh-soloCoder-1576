@@ -10,6 +10,10 @@ import {
   CheckCircle,
   Calendar,
   User,
+  CheckSquare,
+  Square,
+  PhoneCall,
+  Bell,
 } from 'lucide-react';
 import { useOrderStore } from '@/store';
 import { formatDate, formatCurrency, isOverdue, getReadyDays, formatDiscount } from '@/utils';
@@ -17,10 +21,11 @@ import OrderStatusBadge from '@/components/OrderStatusBadge';
 
 export default function PickupList() {
   const navigate = useNavigate();
-  const { getOrdersByStatus, addReminder } = useOrderStore();
+  const { getOrdersByStatus, addReminder, batchAddReminders } = useOrderStore();
   const [phoneKeyword, setPhoneKeyword] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'overdue' | 'normal'>('all');
-  const [sortBy, setSortBy] = useState<'days' | 'date'>('days');
+  const [sortBy, setSortBy] = useState<'days' | 'date' | 'reminder'>('days');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const readyOrders = useMemo(() => {
     return getOrdersByStatus('ready');
@@ -42,18 +47,49 @@ export default function PickupList() {
     list = [...list].sort((a, b) => {
       if (sortBy === 'days') {
         return getReadyDays(b) - getReadyDays(a);
-      } else {
+      } else if (sortBy === 'date') {
         return new Date(b.readyAt || '').getTime() - new Date(a.readyAt || '').getTime();
+      } else {
+        const aLast = a.reminderRecords?.[0]?.remindedAt || '0';
+        const bLast = b.reminderRecords?.[0]?.remindedAt || '0';
+        return new Date(bLast).getTime() - new Date(aLast).getTime();
       }
     });
 
     return list;
   }, [readyOrders, phoneKeyword, filterType, sortBy]);
 
+  const allSelected =
+    filteredOrders.length > 0 && selectedIds.length === filteredOrders.length;
+  const someSelected = selectedIds.length > 0 && selectedIds.length < filteredOrders.length;
+
   const handleReminder = (orderId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm('确定要记录一次电话催取吗？')) {
       addReminder(orderId, '电话提醒客户取衣');
+    }
+  };
+
+  const handleBatchReminder = () => {
+    if (selectedIds.length === 0) return;
+    if (confirm(`确定要对选中的 ${selectedIds.length} 个订单记录电话催取吗？`)) {
+      batchAddReminders(selectedIds, '批量电话提醒客户取衣');
+      setSelectedIds([]);
+    }
+  };
+
+  const toggleSelect = (orderId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIds((prev) =>
+      prev.includes(orderId) ? prev.filter((id) => id !== orderId) : [...prev, orderId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredOrders.map((o) => o.id));
     }
   };
 
@@ -114,6 +150,38 @@ export default function PickupList() {
 
       <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
         <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleSelectAll}
+              className={`w-6 h-6 rounded flex items-center justify-center transition-colors ${
+                allSelected
+                  ? 'bg-sky-500 text-white'
+                  : someSelected
+                  ? 'bg-sky-500 text-white'
+                  : 'border border-slate-300 text-transparent'
+              }`}
+            >
+              {allSelected || someSelected ? (
+                <CheckSquare className="w-4 h-4" />
+              ) : (
+                <Square className="w-4 h-4 text-transparent" />
+              )}
+            </button>
+            {selectedIds.length > 0 && (
+              <span className="text-sm text-slate-600">
+                已选 <span className="font-semibold text-sky-600">{selectedIds.length}</span> 项
+              </span>
+            )}
+            {selectedIds.length > 0 && (
+              <button
+                onClick={handleBatchReminder}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-sky-500 to-cyan-400 text-white rounded-lg text-sm font-medium hover:shadow-md transition-all"
+              >
+                <PhoneCall className="w-4 h-4" />
+                批量催取
+              </button>
+            )}
+          </div>
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
             <input
@@ -163,11 +231,12 @@ export default function PickupList() {
             <span className="text-sm text-slate-500">排序：</span>
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as 'days' | 'date')}
+              onChange={(e) => setSortBy(e.target.value as 'days' | 'date' | 'reminder')}
               className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
             >
               <option value="days">按洗好天数</option>
               <option value="date">按洗好日期</option>
+              <option value="reminder">按催取时间</option>
             </select>
           </div>
         </div>
@@ -192,12 +261,26 @@ export default function PickupList() {
                   onClick={() => navigate(`/orders/${order.id}`)}
                   className={`p-5 hover:bg-slate-50 cursor-pointer transition-colors ${
                     overdue ? 'bg-orange-50/30' : ''
-                  }`}
+                  } ${selectedIds.includes(order.id) ? 'bg-sky-50' : ''}`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4 flex-1">
+                      <button
+                        onClick={(e) => toggleSelect(order.id, e)}
+                        className={`w-6 h-6 rounded flex items-center justify-center transition-colors flex-shrink-0 ${
+                          selectedIds.includes(order.id)
+                            ? 'bg-sky-500 text-white'
+                            : 'border border-slate-300 hover:border-sky-400'
+                        }`}
+                      >
+                        {selectedIds.includes(order.id) ? (
+                          <CheckSquare className="w-4 h-4" />
+                        ) : (
+                          <Square className="w-4 h-4 text-transparent" />
+                        )}
+                      </button>
                       <div
-                        className={`w-14 h-14 rounded-xl flex items-center justify-center ${
+                        className={`w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 ${
                           overdue
                             ? 'bg-orange-100 text-orange-600'
                             : 'bg-emerald-100 text-emerald-600'
@@ -209,7 +292,7 @@ export default function PickupList() {
                           <CheckCircle className="w-7 h-7" />
                         )}
                       </div>
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-3">
                           <span className="font-semibold text-slate-800">
                             {order.customerName}
@@ -246,7 +329,7 @@ export default function PickupList() {
                           )}
                           {lastReminder && (
                             <span className="text-xs text-slate-500 flex items-center gap-1">
-                              <Clock className="w-3.5 h-3.5" />
+                              <Bell className="w-3.5 h-3.5" />
                               最近催取：{formatDate(lastReminder.remindedAt)}
                             </span>
                           )}

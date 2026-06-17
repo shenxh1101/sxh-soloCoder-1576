@@ -12,6 +12,7 @@ import type {
   RechargeRecord,
   ConsumeRecord,
   ReminderRecord,
+  MemberStats,
 } from '@/types';
 import { generateId, calculateTotalAmount, calculateFinalAmount } from '@/utils';
 import {
@@ -20,6 +21,8 @@ import {
   PAYMENT_METHOD_NAMES,
   CLOTHING_TYPE_NAMES,
   WASH_TYPE_NAMES,
+  calculateMemberLevel,
+  getMemberLevelConfig,
 } from '@/config/prices';
 
 let orderCounter = 1000;
@@ -56,11 +59,12 @@ interface OrderStore {
   searchOrders: (keyword: string) => Order[];
   getOrdersByStatus: (status?: OrderStatus) => Order[];
   addReminder: (orderId: string, note?: string) => void;
+  batchAddReminders: (orderIds: string[], note?: string) => void;
 
   getPrice: (washType: 'water' | 'dry', clothingType: OrderItem['clothingType']) => number;
   updatePriceConfig: (config: PriceConfig) => void;
 
-  addMember: (member: Omit<Member, 'id' | 'createdAt' | 'balance' | 'points'>) => Member;
+  addMember: (member: Omit<Member, 'id' | 'createdAt' | 'balance' | 'points' | 'level' | 'totalConsume'>) => Member;
   updateMember: (id: string, data: Partial<Omit<Member, 'id' | 'createdAt'>>) => void;
   deleteMember: (id: string) => void;
   searchMembers: (keyword: string) => Member[];
@@ -70,6 +74,8 @@ interface OrderStore {
   rechargeMember: (memberId: string, amount: number) => RechargeRecord;
   getMemberRechargeRecords: (memberId: string) => RechargeRecord[];
   getMemberConsumeRecords: (memberId: string) => ConsumeRecord[];
+  checkAndUpgradeMemberLevel: (memberId: string) => Member | undefined;
+  getMemberStats: () => MemberStats;
 }
 
 function createMockOrders(priceConfig: PriceConfig): Order[] {
@@ -227,11 +233,11 @@ function createMockRechargeRecords(): RechargeRecord[] {
     return d.toISOString();
   };
   return [
-    { id: generateId(), memberId: 'M001', amount: 300, rechargeAt: daysAgo(60) },
-    { id: generateId(), memberId: 'M001', amount: 200, rechargeAt: daysAgo(30) },
-    { id: generateId(), memberId: 'M002', amount: 200, rechargeAt: daysAgo(45) },
-    { id: generateId(), memberId: 'M003', amount: 500, rechargeAt: daysAgo(20) },
-    { id: generateId(), memberId: 'M003', amount: 500, rechargeAt: daysAgo(10) },
+    { id: generateId(), memberId: 'M001', amount: 300, balanceBefore: 0, balanceAfter: 300, rechargeAt: daysAgo(60) },
+    { id: generateId(), memberId: 'M001', amount: 200, balanceBefore: 300, balanceAfter: 500, rechargeAt: daysAgo(30) },
+    { id: generateId(), memberId: 'M002', amount: 200, balanceBefore: 0, balanceAfter: 200, rechargeAt: daysAgo(45) },
+    { id: generateId(), memberId: 'M003', amount: 500, balanceBefore: 0, balanceAfter: 500, rechargeAt: daysAgo(20) },
+    { id: generateId(), memberId: 'M003', amount: 500, balanceBefore: 500, balanceAfter: 1000, rechargeAt: daysAgo(10) },
   ];
 }
 
@@ -309,6 +315,7 @@ export const useOrderStore = create<OrderStore>()(
           0,
           Math.round((data.receivedAmount - order.finalAmount) * 100) / 100
         );
+        const isBalancePayment = data.paymentMethod === 'card' && !!order.memberId;
 
         const payment: PaymentRecord = {
           id: generateId(),
@@ -333,24 +340,52 @@ export const useOrderStore = create<OrderStore>()(
           receivedAmount: data.receivedAmount,
           change,
           paidAt,
+          isBalancePayment,
         };
 
-        if (data.paymentMethod === 'card' && order.memberId) {
-          const member = get().getMemberById(order.memberId);
-          if (!member) throw new Error('会员不存在');
-          if (member.balance < order.finalAmount) {
-            throw new Error('会员余额不足');
-          }
+        let member: Member | undefined = undefined;
+        let balanceBefore = 0;
+        let balanceAfter = 0;
 
-          const newBalance = Math.round((member.balance - order.finalAmount) * 100) / 100;
+        if (order.memberId) {
+          member = get().getMemberById(order.memberId);
+          if (!member) throw new Error('会员不存在');
+
           const pointsEarned = Math.floor(order.finalAmount * POINTS_PER_YUAN);
           const newPoints = member.points + pointsEarned;
+          const newTotalConsume = Math.round((member.totalConsume + order.finalAmount) * 100) / 100;
 
-          set((state) => ({
-            members: state.members.map((m) =>
-              m.id === order.memberId ? { ...m, balance: newBalance, points: newPoints } : m
-            ),
-          }));
+          if (isBalancePayment) {
+            if (member.balance < order.finalAmount) {
+              throw new Error('会员余额不足');
+            }
+            balanceBefore = member.balance;
+            balanceAfter = Math.round((member.balance - order.finalAmount) * 100) / 100;
+
+            payment.balanceDeducted = order.finalAmount;
+            payment.balanceBefore = balanceBefore;
+            payment.balanceAfter = balanceAfter;
+
+            receipt.balanceDeducted = order.finalAmount;
+            receipt.balanceBefore = balanceBefore;
+            receipt.balanceAfter = balanceAfter;
+
+            set((state) => ({
+              members: state.members.map((m) =>
+                m.id === order.memberId
+                  ? { ...m, balance: balanceAfter, points: newPoints, totalConsume: newTotalConsume }
+                  : m
+              ),
+            }));
+          } else {
+            set((state) => ({
+              members: state.members.map((m) =>
+                m.id === order.memberId
+                  ? { ...m, points: newPoints, totalConsume: newTotalConsume }
+                  : m
+              ),
+            }));
+          }
 
           const consumeRecord: ConsumeRecord = {
             id: generateId(),
@@ -359,36 +394,20 @@ export const useOrderStore = create<OrderStore>()(
             orderNo: order.orderNo,
             amount: order.finalAmount,
             pointsEarned,
+            paymentMethod: data.paymentMethod,
+            isBalancePayment,
+            balanceDeducted: isBalancePayment ? order.finalAmount : undefined,
+            balanceBefore: isBalancePayment ? balanceBefore : undefined,
+            balanceAfter: isBalancePayment ? balanceAfter : undefined,
             consumeAt: paidAt,
           };
           set((state) => ({
             consumeRecords: [consumeRecord, ...state.consumeRecords],
           }));
-        } else if (order.memberId) {
-          const member = get().getMemberById(order.memberId);
-          if (member) {
-            const pointsEarned = Math.floor(order.finalAmount * POINTS_PER_YUAN);
-            const newPoints = member.points + pointsEarned;
 
-            set((state) => ({
-              members: state.members.map((m) =>
-                m.id === order.memberId ? { ...m, points: newPoints } : m
-              ),
-            }));
-
-            const consumeRecord: ConsumeRecord = {
-              id: generateId(),
-              memberId: order.memberId,
-              orderId,
-              orderNo: order.orderNo,
-              amount: order.finalAmount,
-              pointsEarned,
-              consumeAt: paidAt,
-            };
-            set((state) => ({
-              consumeRecords: [consumeRecord, ...state.consumeRecords],
-            }));
-          }
+          setTimeout(() => {
+            get().checkAndUpgradeMemberLevel(order.memberId!);
+          }, 0);
         }
 
         set((state) => ({
@@ -460,6 +479,8 @@ export const useOrderStore = create<OrderStore>()(
           id: get().generateMemberId(),
           balance: 0,
           points: 0,
+          level: 'normal',
+          totalConsume: 0,
           createdAt: new Date().toISOString(),
         };
         set((state) => ({ members: [...state.members, newMember] }));
@@ -502,6 +523,7 @@ export const useOrderStore = create<OrderStore>()(
         if (!member) throw new Error('会员不存在');
         if (amount <= 0) throw new Error('充值金额必须大于0');
 
+        const balanceBefore = member.balance;
         const newBalance = Math.round((member.balance + amount) * 100) / 100;
 
         set((state) => ({
@@ -514,6 +536,8 @@ export const useOrderStore = create<OrderStore>()(
           id: generateId(),
           memberId,
           amount,
+          balanceBefore,
+          balanceAfter: newBalance,
           rechargeAt: new Date().toISOString(),
         };
         set((state) => ({
@@ -529,6 +553,83 @@ export const useOrderStore = create<OrderStore>()(
 
       getMemberConsumeRecords: (memberId) => {
         return get().consumeRecords.filter((r) => r.memberId === memberId);
+      },
+
+      checkAndUpgradeMemberLevel: (memberId) => {
+        const member = get().getMemberById(memberId);
+        if (!member) return undefined;
+
+        const newLevel = calculateMemberLevel(member.totalConsume, member.points);
+        if (newLevel !== member.level) {
+          const newLevelConfig = getMemberLevelConfig(newLevel);
+          set((state) => ({
+            members: state.members.map((m) =>
+              m.id === memberId
+                ? { ...m, level: newLevel, discount: newLevelConfig.discount }
+                : m
+            ),
+          }));
+        }
+        return get().getMemberById(memberId);
+      },
+
+      batchAddReminders: (orderIds, note) => {
+        const remindedAt = new Date().toISOString();
+        set((state) => ({
+          orders: state.orders.map((o) => {
+            if (!orderIds.includes(o.id)) return o;
+            const reminder: ReminderRecord = {
+              id: generateId(),
+              orderId: o.id,
+              remindedAt,
+              note,
+            };
+            const records = o.reminderRecords || [];
+            return { ...o, reminderRecords: [reminder, ...records] };
+          }),
+        }));
+      },
+
+      getMemberStats: () => {
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        const isCurrentMonth = (dateStr: string) => {
+          const d = new Date(dateStr);
+          return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+        };
+
+        const totalRecharge = get()
+          .rechargeRecords.filter((r) => isCurrentMonth(r.rechargeAt))
+          .reduce((sum, r) => sum + r.amount, 0);
+
+        const monthConsumeRecords = get()
+          .consumeRecords.filter((r) => isCurrentMonth(r.consumeAt));
+
+        const totalMemberConsume = monthConsumeRecords.reduce((sum, r) => sum + r.amount, 0);
+        const balancePaymentAmount = monthConsumeRecords
+          .filter((r) => r.isBalancePayment)
+          .reduce((sum, r) => sum + (r.balanceDeducted || 0), 0);
+
+        const balancePaymentRatio = totalMemberConsume > 0
+          ? Math.round((balancePaymentAmount / totalMemberConsume) * 10000) / 10000
+          : 0;
+
+        const totalPointsIssued = monthConsumeRecords.reduce((sum, r) => sum + r.pointsEarned, 0);
+
+        const normalOrderRevenue = get()
+          .orders.filter((o) => o.payment && isCurrentMonth(o.payment.paidAt) && !o.memberId)
+          .reduce((sum, o) => sum + o.finalAmount, 0);
+
+        return {
+          totalRecharge,
+          totalMemberConsume,
+          balancePaymentAmount,
+          balancePaymentRatio,
+          totalPointsIssued,
+          normalOrderRevenue,
+        };
       },
     }),
     {

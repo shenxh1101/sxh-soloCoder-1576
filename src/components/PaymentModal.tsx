@@ -315,8 +315,28 @@ export default function PaymentModal({
               <div className="border-t border-dashed border-slate-200 pt-3 mt-3 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">付款方式</span>
-                  <span className="text-slate-800">{displayReceipt.paymentMethod}</span>
+                  <span className="text-slate-800">
+                    {displayReceipt.isBalancePayment ? '会员卡余额' : displayReceipt.paymentMethod}
+                  </span>
                 </div>
+                {displayReceipt.isBalancePayment && (
+                  <>
+                    <div className="flex justify-between text-sm bg-sky-50 p-2 rounded-lg">
+                      <span className="text-sky-600 font-medium">余额扣款</span>
+                      <span className="text-sky-700 font-semibold">
+                        -{formatCurrency(displayReceipt.balanceDeducted || 0)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">支付前余额</span>
+                      <span className="text-slate-700">{formatCurrency(displayReceipt.balanceBefore || 0)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">支付后余额</span>
+                      <span className="text-emerald-600 font-medium">{formatCurrency(displayReceipt.balanceAfter || 0)}</span>
+                    </div>
+                  </>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">实收</span>
                   <span className="text-slate-800">{formatCurrency(displayReceipt.receivedAmount)}</span>
