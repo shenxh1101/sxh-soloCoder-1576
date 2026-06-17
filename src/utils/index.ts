@@ -1,20 +1,7 @@
 import type { Order, OrderItem, WashType, ClothingType, MonthlyStats, CustomerRank } from '@/types';
-import { PRICE_CONFIG } from '@/config/prices';
 
 export function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
-}
-
-export function calculateItemPrice(
-  washType: WashType,
-  clothingType: ClothingType,
-  quantity: number
-): { unitPrice: number; subtotal: number } {
-  const unitPrice = PRICE_CONFIG[washType][clothingType];
-  return {
-    unitPrice,
-    subtotal: unitPrice * quantity,
-  };
 }
 
 export function calculateTotalAmount(items: OrderItem[]): number {
@@ -69,6 +56,10 @@ export function getMonthlyStatistics(orders: Order[], year: number, month: numbe
   let waterItems = 0;
   let dryItems = 0;
   let totalRevenue = 0;
+  let waterRevenue = 0;
+  let dryRevenue = 0;
+  let receivedRevenue = 0;
+  let unpaidRevenue = 0;
 
   monthOrders.forEach((order) => {
     order.items.forEach((item) => {
@@ -79,7 +70,28 @@ export function getMonthlyStatistics(orders: Order[], year: number, month: numbe
         dryItems += item.quantity;
       }
     });
+
+    const orderItemsTotal = order.items.reduce((sum, item) => sum + item.subtotal, 0);
+    const waterSubtotal = order.items
+      .filter((i) => i.washType === 'water')
+      .reduce((sum, i) => sum + i.subtotal, 0);
+    const drySubtotal = order.items
+      .filter((i) => i.washType === 'dry')
+      .reduce((sum, i) => sum + i.subtotal, 0);
+
+    const discountRatio = order.totalAmount > 0 ? order.finalAmount / order.totalAmount : 1;
+
     totalRevenue += order.finalAmount;
+    waterRevenue += Math.round(waterSubtotal * discountRatio * 100) / 100;
+    dryRevenue += Math.round(drySubtotal * discountRatio * 100) / 100;
+
+    if (order.payment) {
+      receivedRevenue += order.finalAmount;
+    } else if (order.status === 'picked') {
+      receivedRevenue += order.finalAmount;
+    } else {
+      unpaidRevenue += order.finalAmount;
+    }
   });
 
   return {
@@ -88,10 +100,18 @@ export function getMonthlyStatistics(orders: Order[], year: number, month: numbe
     waterItems,
     dryItems,
     totalRevenue: Math.round(totalRevenue * 100) / 100,
+    waterRevenue: Math.round(waterRevenue * 100) / 100,
+    dryRevenue: Math.round(dryRevenue * 100) / 100,
+    receivedRevenue: Math.round(receivedRevenue * 100) / 100,
+    unpaidRevenue: Math.round(unpaidRevenue * 100) / 100,
   };
 }
 
-export function getCustomerRanking(orders: Order[], year: number, month: number): CustomerRank[] {
+export function getCustomerRankingByAmount(
+  orders: Order[],
+  year: number,
+  month: number
+): CustomerRank[] {
   const monthOrders = getOrdersByMonth(orders, year, month);
   const customerMap = new Map<string, CustomerRank>();
 
@@ -102,20 +122,51 @@ export function getCustomerRanking(orders: Order[], year: number, month: number)
         customerName: order.customerName,
         customerPhone: order.customerPhone,
         orderCount: 0,
+        totalItems: 0,
         totalAmount: 0,
       });
     }
     const record = customerMap.get(key)!;
     record.orderCount += 1;
+    record.totalItems += order.items.reduce((sum, i) => sum + i.quantity, 0);
     record.totalAmount += order.finalAmount;
   });
 
-  const ranking = Array.from(customerMap.values())
+  return Array.from(customerMap.values())
     .sort((a, b) => b.totalAmount - a.totalAmount)
     .slice(0, 10)
     .map((r) => ({ ...r, totalAmount: Math.round(r.totalAmount * 100) / 100 }));
+}
 
-  return ranking;
+export function getCustomerRankingByItems(
+  orders: Order[],
+  year: number,
+  month: number
+): CustomerRank[] {
+  const monthOrders = getOrdersByMonth(orders, year, month);
+  const customerMap = new Map<string, CustomerRank>();
+
+  monthOrders.forEach((order) => {
+    const key = order.customerPhone;
+    if (!customerMap.has(key)) {
+      customerMap.set(key, {
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        orderCount: 0,
+        totalItems: 0,
+        totalAmount: 0,
+      });
+    }
+    const record = customerMap.get(key)!;
+    record.orderCount += 1;
+    record.totalItems += order.items.reduce((sum, i) => sum + i.quantity, 0);
+    record.totalAmount += order.finalAmount;
+  });
+
+  return Array.from(customerMap.values())
+    .sort((a, b) => b.totalItems - a.totalItems)
+    .slice(0, 10)
+    .map((r) => ({ ...r, totalAmount: Math.round(r.totalAmount * 100) / 100 }));
 }
 
 export function formatDate(dateStr: string): string {
@@ -138,4 +189,8 @@ export function formatDateShort(dateStr: string): string {
 
 export function formatCurrency(amount: number): string {
   return `¥${amount.toFixed(2)}`;
+}
+
+export function formatReceipt(content: string): string {
+  return content;
 }

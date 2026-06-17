@@ -1,49 +1,80 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, User, Phone, IdCard, Tag, Check } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, User, Phone, IdCard, Tag, Check, AlertCircle } from 'lucide-react';
 import { useOrderStore } from '@/store';
 import type { WashType, ClothingType, OrderItem } from '@/types';
-import { PRICE_CONFIG, CLOTHING_TYPE_NAMES, WASH_TYPE_NAMES } from '@/config/prices';
-import { generateId, calculateItemPrice, calculateTotalAmount, calculateFinalAmount, formatCurrency } from '@/utils';
+import { CLOTHING_TYPE_NAMES, WASH_TYPE_NAMES } from '@/config/prices';
+import { generateId, calculateTotalAmount, calculateFinalAmount, formatCurrency } from '@/utils';
 
 const clothingOptions: ClothingType[] = ['shirt', 'pants', 'coat', 'bedding'];
 
 export default function NewOrder() {
   const navigate = useNavigate();
-  const { addOrder, members } = useOrderStore();
+  const { addOrder, getMemberById, getMemberByPhone, getPrice } = useOrderStore();
 
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [memberIdInput, setMemberIdInput] = useState('');
   const [memberDiscount, setMemberDiscount] = useState(1);
   const [memberName, setMemberName] = useState('');
+  const [memberId, setMemberId] = useState<string | undefined>(undefined);
+  const [memberError, setMemberError] = useState('');
   const [items, setItems] = useState<OrderItem[]>([]);
   const [currentWashType, setCurrentWashType] = useState<WashType>('water');
   const [currentClothing, setCurrentClothing] = useState<ClothingType>('shirt');
   const [currentQuantity, setCurrentQuantity] = useState(1);
 
-  const totalAmount = useMemo(() => calculateTotalAmount(items), [items]);
-  const finalAmount = useMemo(() => calculateFinalAmount(totalAmount, memberDiscount), [totalAmount, memberDiscount]);
-  const discountAmount = useMemo(() => Math.round((totalAmount - finalAmount) * 100) / 100, [totalAmount, finalAmount]);
+  const resetMemberState = useCallback(() => {
+    setMemberDiscount(1);
+    setMemberName('');
+    setMemberId(undefined);
+    setMemberError('');
+  }, []);
 
-  const handleMemberSearch = () => {
-    const member = members.find(
-      (m) => m.id.toLowerCase() === memberIdInput.trim().toLowerCase() || m.phone === memberIdInput.trim()
-    );
-    if (member) {
-      setMemberDiscount(member.discount);
-      setMemberName(member.name);
-      if (!customerName) setCustomerName(member.name);
-      if (!customerPhone) setCustomerPhone(member.phone);
-    } else {
-      setMemberDiscount(1);
-      setMemberName('');
+  const handleMemberInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setMemberIdInput(value);
+    if (!value.trim()) {
+      resetMemberState();
     }
   };
 
+  const handleMemberSearch = useCallback(() => {
+    const input = memberIdInput.trim();
+    if (!input) {
+      resetMemberState();
+      return;
+    }
+
+    let member = getMemberById(input);
+    if (!member && /^\d{11}$/.test(input)) {
+      member = getMemberByPhone(input);
+    }
+
+    if (member) {
+      setMemberDiscount(member.discount);
+      setMemberName(member.name);
+      setMemberId(member.id);
+      setMemberError('');
+      if (!customerName) setCustomerName(member.name);
+      if (!customerPhone) setCustomerPhone(member.phone);
+    } else {
+      resetMemberState();
+      setMemberError('未找到该会员，请检查会员号或手机号');
+    }
+  }, [memberIdInput, getMemberById, getMemberByPhone, customerName, customerPhone, resetMemberState]);
+
+  const getCurrentUnitPrice = useCallback(
+    (washType: WashType, clothingType: ClothingType) => {
+      return getPrice(washType, clothingType);
+    },
+    [getPrice]
+  );
+
   const addItem = () => {
     if (currentQuantity < 1) return;
-    const { unitPrice, subtotal } = calculateItemPrice(currentWashType, currentClothing, currentQuantity);
+    const unitPrice = getCurrentUnitPrice(currentWashType, currentClothing);
+    const subtotal = unitPrice * currentQuantity;
     const newItem: OrderItem = {
       id: generateId(),
       washType: currentWashType,
@@ -72,25 +103,47 @@ export default function NewOrder() {
       return;
     }
 
-    const member = members.find(
-      (m) => m.id.toLowerCase() === memberIdInput.trim().toLowerCase() || m.phone === memberIdInput.trim()
-    );
+    let finalMemberDiscount = 1;
+    let finalMemberId: string | undefined = undefined;
+    const input = memberIdInput.trim();
+
+    if (input) {
+      let member = getMemberById(input);
+      if (!member && /^\d{11}$/.test(input)) {
+        member = getMemberByPhone(input);
+      }
+      if (member) {
+        finalMemberDiscount = member.discount;
+        finalMemberId = member.id;
+      }
+    }
+
+    const recalculatedItems = items.map((item) => ({
+      ...item,
+      unitPrice: getPrice(item.washType, item.clothingType),
+      subtotal: getPrice(item.washType, item.clothingType) * item.quantity,
+    }));
+    const recalculatedTotal = calculateTotalAmount(recalculatedItems);
+    const recalculatedFinal = calculateFinalAmount(recalculatedTotal, finalMemberDiscount);
 
     addOrder({
       customerName: customerName.trim(),
       customerPhone: customerPhone.trim(),
-      memberId: member?.id,
-      memberDiscount,
+      memberId: finalMemberId,
+      memberDiscount: finalMemberDiscount,
       status: 'pending',
-      items,
-      totalAmount,
-      finalAmount,
+      items: recalculatedItems,
+      totalAmount: recalculatedTotal,
+      finalAmount: recalculatedFinal,
     });
 
     navigate('/orders');
   };
 
-  const currentUnitPrice = PRICE_CONFIG[currentWashType][currentClothing];
+  const totalAmount = useMemo(() => calculateTotalAmount(items), [items]);
+  const finalAmount = useMemo(() => calculateFinalAmount(totalAmount, memberDiscount), [totalAmount, memberDiscount]);
+  const discountAmount = useMemo(() => Math.round((totalAmount - finalAmount) * 100) / 100, [totalAmount, finalAmount]);
+  const currentUnitPrice = getCurrentUnitPrice(currentWashType, currentClothing);
 
   return (
     <div className="space-y-6">
@@ -147,7 +200,7 @@ export default function NewOrder() {
                   <input
                     type="text"
                     value={memberIdInput}
-                    onChange={(e) => setMemberIdInput(e.target.value)}
+                    onChange={handleMemberInputChange}
                     onBlur={handleMemberSearch}
                     placeholder="输入会员号或手机号查询会员折扣"
                     className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all"
@@ -163,9 +216,20 @@ export default function NewOrder() {
                   <div className="mt-3 flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
                     <Check className="w-5 h-5 text-emerald-600" />
                     <span className="text-sm text-emerald-700">
-                      会员「{memberName}」，享 <strong>{Math.round(memberDiscount * 10)}折</strong> 优惠
+                      会员「{memberName}」（{memberId}），享 <strong>{Math.round(memberDiscount * 10)}折</strong> 优惠
                     </span>
                   </div>
+                )}
+                {memberError && (
+                  <div className="mt-3 flex items-center gap-2 p-3 bg-rose-50 border border-rose-200 rounded-xl">
+                    <AlertCircle className="w-5 h-5 text-rose-600" />
+                    <span className="text-sm text-rose-700">{memberError}</span>
+                  </div>
+                )}
+                {!memberIdInput.trim() && memberDiscount === 1 && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    未输入会员信息，按原价计算
+                  </p>
                 )}
               </div>
             </div>
@@ -209,24 +273,27 @@ export default function NewOrder() {
             <div className="mb-4">
               <p className="text-sm font-medium text-slate-700 mb-3">衣物类型</p>
               <div className="grid grid-cols-4 gap-3">
-                {clothingOptions.map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setCurrentClothing(type)}
-                    className={`p-4 rounded-xl border-2 transition-all text-center ${
-                      currentClothing === type
-                        ? 'border-sky-500 bg-sky-50'
-                        : 'border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    <p className={`font-semibold ${currentClothing === type ? 'text-sky-700' : 'text-slate-700'}`}>
-                      {CLOTHING_TYPE_NAMES[type]}
-                    </p>
-                    <p className={`text-xs mt-1 ${currentClothing === type ? 'text-sky-600' : 'text-slate-500'}`}>
-                      ¥{PRICE_CONFIG[currentWashType][type]}/件
-                    </p>
-                  </button>
-                ))}
+                {clothingOptions.map((type) => {
+                  const price = getCurrentUnitPrice(currentWashType, type);
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => setCurrentClothing(type)}
+                      className={`p-4 rounded-xl border-2 transition-all text-center ${
+                        currentClothing === type
+                          ? 'border-sky-500 bg-sky-50'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <p className={`font-semibold ${currentClothing === type ? 'text-sky-700' : 'text-slate-700'}`}>
+                        {CLOTHING_TYPE_NAMES[type]}
+                      </p>
+                      <p className={`text-xs mt-1 ${currentClothing === type ? 'text-sky-600' : 'text-slate-500'}`}>
+                        ¥{price}/件
+                      </p>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -316,7 +383,7 @@ export default function NewOrder() {
                 <div className="flex items-center justify-between text-emerald-600">
                   <span className="flex items-center gap-1">
                     <Tag className="w-4 h-4" />
-                    会员折扣
+                    会员{Math.round(memberDiscount * 10)}折
                   </span>
                   <span className="font-medium">-{formatCurrency(discountAmount)}</span>
                 </div>

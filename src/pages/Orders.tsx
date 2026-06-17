@@ -76,6 +76,7 @@ export default function Orders() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-slate-100">
+                <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">订单号</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">客户信息</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">衣物数量</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">金额</th>
@@ -87,7 +88,7 @@ export default function Orders() {
             <tbody className="divide-y divide-slate-50">
               {filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
                     暂无订单记录
                   </td>
                 </tr>
@@ -101,6 +102,9 @@ export default function Orders() {
                       className={`hover:bg-slate-50 transition-colors cursor-pointer ${overdue ? 'bg-orange-50/50' : ''}`}
                       onClick={() => navigate(`/orders/${order.id}`)}
                     >
+                      <td className="py-4 px-4">
+                        <span className="font-mono text-sm font-semibold text-sky-600">{order.orderNo}</span>
+                      </td>
                       <td className="py-4 px-4">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-sky-400 to-cyan-300 flex items-center justify-center text-white font-semibold">

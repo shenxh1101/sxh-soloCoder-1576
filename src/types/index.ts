@@ -4,6 +4,8 @@ export type ClothingType = 'shirt' | 'pants' | 'coat' | 'bedding';
 
 export type OrderStatus = 'pending' | 'ready' | 'picked';
 
+export type PaymentMethod = 'cash' | 'wechat' | 'alipay' | 'card';
+
 export interface PriceConfig {
   water: Record<ClothingType, number>;
   dry: Record<ClothingType, number>;
@@ -20,8 +22,34 @@ export interface OrderItem {
   subtotal: number;
 }
 
+export interface PaymentRecord {
+  id: string;
+  orderId: string;
+  amount: number;
+  receivedAmount: number;
+  change: number;
+  paymentMethod: PaymentMethod;
+  paidAt: string;
+}
+
+export interface ReceiptData {
+  orderId: string;
+  orderNo: string;
+  customerName: string;
+  customerPhone: string;
+  items: OrderItem[];
+  totalAmount: number;
+  memberDiscount: number;
+  finalAmount: number;
+  paymentMethod: string;
+  receivedAmount: number;
+  change: number;
+  paidAt: string;
+}
+
 export interface Order {
   id: string;
+  orderNo: string;
   customerName: string;
   customerPhone: string;
   memberId?: string;
@@ -30,6 +58,8 @@ export interface Order {
   items: OrderItem[];
   totalAmount: number;
   finalAmount: number;
+  payment?: PaymentRecord;
+  receipt?: ReceiptData;
   createdAt: string;
   readyAt?: string;
   pickedAt?: string;
@@ -40,6 +70,7 @@ export interface Member {
   name: string;
   phone: string;
   discount: number;
+  createdAt: string;
 }
 
 export interface MonthlyStats {
@@ -48,11 +79,16 @@ export interface MonthlyStats {
   waterItems: number;
   dryItems: number;
   totalRevenue: number;
+  waterRevenue: number;
+  dryRevenue: number;
+  receivedRevenue: number;
+  unpaidRevenue: number;
 }
 
 export interface CustomerRank {
   customerName: string;
   customerPhone: string;
   orderCount: number;
+  totalItems: number;
   totalAmount: number;
 }

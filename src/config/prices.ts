@@ -1,6 +1,6 @@
-import type { PriceConfig, ClothingType } from '@/types';
+import type { PriceConfig, ClothingType, PaymentMethod } from '@/types';
 
-export const PRICE_CONFIG: PriceConfig = {
+export const DEFAULT_PRICE_CONFIG: PriceConfig = {
   water: {
     shirt: 10,
     pants: 10,
@@ -33,8 +33,15 @@ export const ORDER_STATUS_NAMES: Record<'pending' | 'ready' | 'picked', string> 
   picked: '已取走',
 };
 
+export const PAYMENT_METHOD_NAMES: Record<PaymentMethod, string> = {
+  cash: '现金',
+  wechat: '微信',
+  alipay: '支付宝',
+  card: '会员卡',
+};
+
 export const DEFAULT_MEMBERS = [
-  { id: 'M001', name: '张三', phone: '13800138001', discount: 0.9 },
-  { id: 'M002', name: '李四', phone: '13800138002', discount: 0.85 },
-  { id: 'M003', name: '王五', phone: '13800138003', discount: 0.8 },
+  { id: 'M001', name: '张三', phone: '13800138001', discount: 0.9, createdAt: new Date(Date.now() - 86400000 * 90).toISOString() },
+  { id: 'M002', name: '李四', phone: '13800138002', discount: 0.85, createdAt: new Date(Date.now() - 86400000 * 60).toISOString() },
+  { id: 'M003', name: '王五', phone: '13800138003', discount: 0.8, createdAt: new Date(Date.now() - 86400000 * 30).toISOString() },
 ];

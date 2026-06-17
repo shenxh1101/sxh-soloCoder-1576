@@ -1,7 +1,25 @@
 import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, TrendingUp, Shirt, Droplets, Wind, DollarSign, Trophy, Award } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  TrendingUp,
+  Shirt,
+  Droplets,
+  Wind,
+  DollarSign,
+  Trophy,
+  Award,
+  Wallet,
+  CreditCard,
+  Clock,
+} from 'lucide-react';
 import { useOrderStore } from '@/store';
-import { getMonthlyStatistics, getCustomerRanking, formatCurrency } from '@/utils';
+import {
+  getMonthlyStatistics,
+  getCustomerRankingByAmount,
+  getCustomerRankingByItems,
+  formatCurrency,
+} from '@/utils';
 
 export default function Statistics() {
   const { orders } = useOrderStore();
@@ -10,7 +28,8 @@ export default function Statistics() {
   const [month, setMonth] = useState(now.getMonth());
 
   const stats = useMemo(() => getMonthlyStatistics(orders, year, month), [orders, year, month]);
-  const ranking = useMemo(() => getCustomerRanking(orders, year, month), [orders, year, month]);
+  const rankingByAmount = useMemo(() => getCustomerRankingByAmount(orders, year, month), [orders, year, month]);
+  const rankingByItems = useMemo(() => getCustomerRankingByItems(orders, year, month), [orders, year, month]);
 
   const goPrevMonth = () => {
     if (month === 0) {
@@ -71,6 +90,41 @@ export default function Statistics() {
     },
   ];
 
+  const revenueCards = [
+    {
+      label: '水洗收入',
+      value: stats.waterRevenue,
+      icon: Droplets,
+      color: 'from-sky-500 to-cyan-400',
+      bgColor: 'bg-sky-50',
+      iconColor: 'text-sky-500',
+    },
+    {
+      label: '干洗收入',
+      value: stats.dryRevenue,
+      icon: Wind,
+      color: 'from-amber-500 to-orange-400',
+      bgColor: 'bg-amber-50',
+      iconColor: 'text-amber-500',
+    },
+    {
+      label: '已收金额',
+      value: stats.receivedRevenue,
+      icon: Wallet,
+      color: 'from-emerald-500 to-green-400',
+      bgColor: 'bg-emerald-50',
+      iconColor: 'text-emerald-500',
+    },
+    {
+      label: '未收金额',
+      value: stats.unpaidRevenue,
+      icon: Clock,
+      color: 'from-rose-500 to-red-400',
+      bgColor: 'bg-rose-50',
+      iconColor: 'text-rose-500',
+    },
+  ];
+
   const waterPercent = stats.totalItems > 0 ? (stats.waterItems / stats.totalItems) * 100 : 0;
   const dryPercent = stats.totalItems > 0 ? (stats.dryItems / stats.totalItems) * 100 : 0;
 
@@ -79,6 +133,57 @@ export default function Statistics() {
     'from-slate-300 to-slate-200',
     'from-orange-400 to-amber-300',
   ];
+
+  const renderRanking = (
+    ranking: Array<{ customerName: string; customerPhone: string; orderCount: number; totalAmount: number; totalItems: number }>,
+    valueKey: 'totalAmount' | 'totalItems',
+    valueLabel: string,
+    title: string
+  ) => {
+    if (ranking.length === 0) {
+      return (
+        <div className="text-center py-12">
+          <Award className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <p className="text-slate-400 text-sm">本月暂无数据</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        {ranking.map((customer, index) => (
+          <div
+            key={customer.customerPhone}
+            className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${
+              index < 3 ? 'bg-gradient-to-r from-slate-50 to-transparent' : 'hover:bg-slate-50'
+            }`}
+          >
+            <div
+              className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${
+                index < 3
+                  ? `bg-gradient-to-br ${rankColors[index]} text-white shadow-sm`
+                  : 'bg-slate-100 text-slate-500'
+              }`}
+            >
+              {index < 3 ? ['🥇', '🥈', '🥉'][index] : index + 1}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-slate-800 truncate">{customer.customerName}</p>
+              <p className="text-xs text-slate-500">{customer.orderCount} 单</p>
+            </div>
+            <div className="text-right">
+              <span className="font-semibold text-slate-800">
+                {valueKey === 'totalAmount'
+                  ? formatCurrency(customer.totalAmount)
+                  : `${customer.totalItems} 件`}
+              </span>
+              <p className="text-xs text-slate-400">{valueLabel}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -94,7 +199,9 @@ export default function Statistics() {
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
-          <span className="px-4 font-semibold text-slate-800 min-w-[120px] text-center">{monthLabel}</span>
+          <span className="px-4 font-semibold text-slate-800 min-w-[120px] text-center">
+            {monthLabel}
+          </span>
           <button
             onClick={goNextMonth}
             className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-colors"
@@ -126,6 +233,27 @@ export default function Statistics() {
         ))}
       </div>
 
+      <div className="grid grid-cols-4 gap-6">
+        {revenueCards.map((stat) => (
+          <div
+            key={stat.label}
+            className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300"
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-slate-500 font-medium">{stat.label}</p>
+                <p className="text-3xl font-bold text-slate-800 mt-2">
+                  {formatCurrency(stat.value)}
+                </p>
+              </div>
+              <div className={`w-12 h-12 rounded-xl ${stat.bgColor} flex items-center justify-center`}>
+                <stat.icon className={`w-6 h-6 ${stat.iconColor}`} />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
           <div className="flex items-center justify-between mb-6">
@@ -135,7 +263,9 @@ export default function Statistics() {
             </div>
             <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-lg">
               <DollarSign className="w-5 h-5 text-emerald-600" />
-              <span className="text-2xl font-bold text-emerald-600">{formatCurrency(stats.totalRevenue)}</span>
+              <span className="text-2xl font-bold text-emerald-600">
+                {formatCurrency(stats.totalRevenue)}
+              </span>
             </div>
           </div>
 
@@ -145,7 +275,7 @@ export default function Statistics() {
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-slate-600 flex items-center gap-2">
                   <Droplets className="w-4 h-4 text-sky-500" />
-                  水洗 {stats.waterItems} 件
+                  水洗 {stats.waterItems} 件 · {formatCurrency(stats.waterRevenue)}
                 </span>
                 <span className="text-sm font-semibold text-sky-600">{waterPercent.toFixed(1)}%</span>
               </div>
@@ -160,9 +290,11 @@ export default function Statistics() {
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-slate-600 flex items-center gap-2">
                   <Wind className="w-4 h-4 text-amber-500" />
-                  干洗 {stats.dryItems} 件
+                  干洗 {stats.dryItems} 件 · {formatCurrency(stats.dryRevenue)}
                 </span>
-                <span className="text-sm font-semibold text-amber-600">{dryPercent.toFixed(1)}%</span>
+                <span className="text-sm font-semibold text-amber-600">
+                  {dryPercent.toFixed(1)}%
+                </span>
               </div>
               <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
                 <div
@@ -172,46 +304,48 @@ export default function Statistics() {
               </div>
             </div>
           </div>
+
+          <div className="mt-6 pt-6 border-t border-slate-100">
+            <h4 className="text-sm font-semibold text-slate-700 mb-4">收款情况</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-emerald-50 rounded-xl">
+                <div className="flex items-center gap-2 mb-2">
+                  <Wallet className="w-4 h-4 text-emerald-600" />
+                  <p className="text-sm text-emerald-700">已收金额</p>
+                </div>
+                <p className="text-2xl font-bold text-emerald-600">
+                  {formatCurrency(stats.receivedRevenue)}
+                </p>
+              </div>
+              <div className="p-4 bg-rose-50 rounded-xl">
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock className="w-4 h-4 text-rose-600" />
+                  <p className="text-sm text-rose-700">未收金额</p>
+                </div>
+                <p className="text-2xl font-bold text-rose-600">
+                  {formatCurrency(stats.unpaidRevenue)}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
-          <div className="flex items-center gap-2 mb-6">
-            <Trophy className="w-5 h-5 text-amber-500" />
-            <h3 className="text-lg font-semibold text-slate-800">客户消费排行</h3>
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+            <div className="flex items-center gap-2 mb-6">
+              <Trophy className="w-5 h-5 text-amber-500" />
+              <h3 className="text-lg font-semibold text-slate-800">消费金额排行</h3>
+            </div>
+            {renderRanking(rankingByAmount.slice(0, 5), 'totalAmount', '累计消费', '消费金额排行')}
           </div>
 
-          {ranking.length === 0 ? (
-            <div className="text-center py-12">
-              <Award className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-slate-400 text-sm">本月暂无订单数据</p>
+          <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
+            <div className="flex items-center gap-2 mb-6">
+              <Shirt className="w-5 h-5 text-sky-500" />
+              <h3 className="text-lg font-semibold text-slate-800">洗衣件数排行</h3>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {ranking.map((customer, index) => (
-                <div
-                  key={customer.customerPhone}
-                  className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${
-                    index < 3 ? 'bg-gradient-to-r from-slate-50 to-transparent' : 'hover:bg-slate-50'
-                  }`}
-                >
-                  <div
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${
-                      index < 3
-                        ? `bg-gradient-to-br ${rankColors[index]} text-white shadow-sm`
-                        : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    {index < 3 ? ['🥇', '🥈', '🥉'][index] : index + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-slate-800 truncate">{customer.customerName}</p>
-                    <p className="text-xs text-slate-500">{customer.orderCount} 单</p>
-                  </div>
-                  <span className="font-semibold text-slate-800">{formatCurrency(customer.totalAmount)}</span>
-                </div>
-              ))}
-            </div>
-          )}
+            {renderRanking(rankingByItems.slice(0, 5), 'totalItems', '累计件数', '洗衣件数排行')}
+          </div>
         </div>
       </div>
     </div>
